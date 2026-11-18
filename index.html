@@ -356,7 +356,7 @@ function renderHome() {
     const allOn = cs.every(c => state.cats.has(c));
     return `<div class="grp"><b>${g}</b><div class="chips">
       <button class="chip ghost" data-grp="${g}" aria-pressed="${allOn}">전체</button>
-      ${cs.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${state.cats.has(c)}">${esc(c)}<span class="n">${CATS[c].n}</span></button>`).join('')}
+      ${cs.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${!allOn && state.cats.has(c)}">${esc(c)}<span class="n">${CATS[c].n}</span></button>`).join('')}
     </div></div>`;
   }).join('');
   const pool = [...state.cats].reduce((s, c) => s + (CATS[c] ? CATS[c].n : 0), 0);
@@ -390,7 +390,8 @@ function renderHome() {
     <button class="primary" id="go" ${pool ? '' : 'disabled'}>문제 풀기 시작</button>
     <span class="muted" style="font-size:13.5px">고른 범위의 표 ${pool}줄</span>
   </section>`;
-  view.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; state.cats.has(c) ? state.cats.delete(c) : state.cats.add(c); saveState(); renderHome(); });
+  view.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat, cs = Object.keys(CATS).filter(x => CATS[x].group === CATS[c].group);
+    if (cs.every(x => state.cats.has(x))) cs.forEach(x => x === c || state.cats.delete(x)); else state.cats.has(c) ? state.cats.delete(c) : state.cats.add(c); saveState(); renderHome(); });
   view.querySelectorAll('[data-grp]').forEach(b => b.onclick = () => {
     const cs = Object.keys(CATS).filter(c => CATS[c].group === b.dataset.grp), on = cs.every(c => state.cats.has(c));
     cs.forEach(c => on ? state.cats.delete(c) : state.cats.add(c)); saveState(); renderHome(); });
