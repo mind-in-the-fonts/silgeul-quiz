@@ -129,6 +129,8 @@ textarea{min-height:100px;resize:vertical;line-height:1.6}
   .stem{font-size:18px}.ox button{padding:22px}.stats{gap:6px}.stat{padding:12px}.stat b{font-size:22px}
   .opt{padding:14px}.passage,.given{padding:14px 16px}
 }
+.resume{background:var(--card);border:1px solid var(--grid);border-radius:var(--r);padding:16px 18px;display:grid;gap:12px;margin-bottom:28px}
+.resume b{display:block;font-size:17px}.resume span{font-size:14px}.resume .bar{margin:10px 0 0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -360,12 +362,16 @@ function renderHome() {
     </div></div>`;
   }).join('');
   const pool = [...state.cats].reduce((s, c) => s + (CATS[c] ? CATS[c].n : 0), 0);
+  const sv = savedQuiz();
   view.innerHTML = `
+  ${sv ? `<section class="resume"><div><b>풀던 문제가 있어요</b><span class="muted">${esc(sv.label)} · ${sv.results.length} / ${sv.keys.length} 풀었어요 (맞힌 문제 ${sv.results.filter(Boolean).length}개)</span>
+    <div class="bar"><i style="width:${sv.results.length / sv.keys.length * 100}%"></i></div></div>
+    <div class="row"><button class="primary" id="resume">이어서 풀기</button><button class="ghost" id="drop">그만두기</button></div></section>` : ''}
   <section>
     <h2>오늘 풀 문제 고르기</h2>
     <p class="muted">소책자 표 ${ITEMS.length}줄과 원고지 내용으로 문제를 만들어요. 풀 때마다 보기와 문제 방식이 바뀌어요.</p>
     <div class="stats">
-      <div class="stat"><b>${t ? Math.round(r / t * 100) + '%' : '–'}</b><span>지금까지 정답률 (${r}/${t})</span></div>
+      <div class="stat"><b>${t ? Math.round(r / t * 100) + '%' : '–'}</b><span>지금까지 정답률 (${r}/${t})</span>${t ? '<button class="linkish" id="reset" style="display:block;font-size:13px">기록 지우기</button>' : ''}</div>
       <div class="stat"><b>${nw}</b><span>오답 노트 문제</span></div>
       <div class="stat"><b>${ESSAY.filter(e => e.type === 'set' || e.type === 'write').length}</b><span>서술형 응용 문제</span></div>
     </div>
@@ -397,14 +403,24 @@ function renderHome() {
     cs.forEach(c => on ? state.cats.delete(c) : state.cats.add(c)); saveState(); renderHome(); });
   view.querySelectorAll('#style button').forEach(b => b.onclick = () => { state.style = b.dataset.v; saveState(); renderHome(); });
   view.querySelectorAll('#count button').forEach(b => b.onclick = () => { state.count = +b.dataset.v; saveState(); renderHome(); });
-  $('#go').onclick = () => startQuiz(buildSession(state.cats, state.style, state.count), '문제 풀기');
+  if (sv) { $('#resume').onclick = resumeQuiz; $('#drop').onclick = () => { const b = $('#drop'); if (b.dataset.sure) { store.set('quiz', null); renderHome(); } else { b.dataset.sure = 1; b.textContent = '한 번 더 누르면 지워요'; } }; }
+  const rs = $('#reset'); if (rs) rs.onclick = () => { if (rs.dataset.sure) { tally = {}; store.set('tally', tally); renderHome(); } else { rs.dataset.sure = 1; rs.textContent = '한 번 더 누르면 정답률을 지워요'; } };
+  $('#go').onclick = () => { if (sv && !$('#go').dataset.sure) { $('#go').dataset.sure = 1; $('#go').textContent = '풀던 문제를 버리고 새로 시작'; return; } startQuiz(buildSession(state.cats, state.style, state.count), '문제 풀기'); };
 }
 function saveState() { store.set('cats', [...state.cats]); store.set('style', state.style); store.set('count', state.count); }
 
+function saveQuiz() { store.set('quiz', quiz ? { keys: quiz.qs.map(q => q.key), i: quiz.i, results: quiz.results, label: quiz.label, fromReview: !!(quiz.qs[0] && quiz.qs[0].fromReview) } : null); }
+function savedQuiz() { const s = store.get('quiz', null); return s && s.keys && s.results.length < s.keys.length ? s : null; }
+function resumeQuiz() {
+  const s = savedQuiz(); if (!s) return;
+  const qs = s.keys.map(rebuild); if (qs.some(q => !q)) { store.set('quiz', null); return renderHome(); }
+  qs.forEach(q => q.fromReview = s.fromReview);
+  quiz = { qs, i: s.results.length, results: s.results, label: s.label }; nav('quiz');
+}
 function startQuiz(qs, label, fromReview) {
   if (!qs.length) { view.innerHTML = `<div class="empty">고른 범위에서 만들 수 있는 문제가 없어요. 범위나 문제 방식을 바꿔 주세요.</div>`; return; }
   qs.forEach(q => q.fromReview = !!fromReview);
-  quiz = { qs, i: 0, results: [], label };
+  quiz = { qs, i: 0, results: [], label }; saveQuiz();
   nav('quiz');
 }
 
@@ -433,13 +449,13 @@ function renderQ() {
     <div class="bar"><i style="width:${(quiz.i) / n * 100}%"></i></div>
     <div class="stem">${q.stem}</div>${body}<div id="fb"></div>`;
   const finish = (ok, extra = '') => {
-    quiz.results[quiz.i] = ok; record(q, ok);
+    quiz.results[quiz.i] = ok; record(q, ok); saveQuiz();
     $('#fb').innerHTML = `<div class="fb ${ok ? 'ok' : 'no'}"><div class="verdict">${ok ? '맞았어요' : '틀렸어요'}</div>${extra}${sourceHtml(q)}</div>
       <div class="next">${!ok && q.type === 'input' ? '<button class="ghost" id="override">맞은 걸로 할게요</button>' : ''}<button class="primary" id="next">${quiz.i + 1 < n ? '다음 문제' : '결과 보기'}</button></div>`;
     $('#next').onclick = next; $('#next').focus();
     const ov = $('#override'); if (ov) ov.onclick = () => { fixOverride(q); finishOverride(); };
   };
-  const finishOverride = () => { quiz.results[quiz.i] = true; $('#fb .fb').className = 'fb ok'; $('#fb .verdict').textContent = '맞은 걸로 기록했어요'; $('#override').remove(); };
+  const finishOverride = () => { quiz.results[quiz.i] = true; saveQuiz(); $('#fb .fb').className = 'fb ok'; $('#fb .verdict').textContent = '맞은 걸로 기록했어요'; $('#override').remove(); };
   if (q.type === 'mc') view.querySelectorAll('.opt').forEach(b => b.onclick = () => {
     if (quiz.results[quiz.i] !== undefined) return;
     const k = +b.dataset.k, ok = k === q.answer;
@@ -462,14 +478,15 @@ function renderQ() {
     $('#reveal').parentNode.remove(); $('#ans').readOnly = true;
     $('#fb').innerHTML = `<div class="fb"><div class="verdict">모범 답안</div><div>${ul(it.after)}</div><div class="src">${esc(it.group)} › ${esc(it.cat)}${it.page ? ' · ' + it.page + '쪽' : ''}${it.note ? ' · ' + esc(it.note) : ''}</div></div>
       <div class="next"><span class="muted" style="margin-right:auto;font-size:14px">내 답과 비교해서 골라 주세요</span><button id="sx">틀렸어요</button><button class="primary" id="so">맞았어요</button></div>`;
-    const go = ok => { quiz.results[quiz.i] = ok; record(q, ok); next(); };
+    const go = ok => { quiz.results[quiz.i] = ok; record(q, ok); saveQuiz(); next(); };
     $('#so').onclick = () => go(true); $('#sx').onclick = () => go(false);
   };
   if (done) { /* 이미 푼 문제로 돌아온 경우 */ }
 }
 function fixOverride(q) { const t = tally[q.cat]; if (t) { t[0]++; store.set('tally', tally); } const w = wrongs[q.key]; if (w) { w.n--; if (w.n <= 0) delete wrongs[q.key]; store.set('wrongs', wrongs); } }
-function next() { if (quiz.i + 1 < quiz.qs.length) { quiz.i++; renderQ(); window.scrollTo(0, 0); } else renderResult(); }
+function next() { if (quiz.i + 1 < quiz.qs.length) { quiz.i++; saveQuiz(); renderQ(); window.scrollTo(0, 0); } else renderResult(); }
 function renderResult() {
+  store.set('quiz', null);
   const n = quiz.qs.length, r = quiz.results.filter(Boolean).length;
   const byCat = {}; quiz.qs.forEach((q, i) => { const b = byCat[q.cat] = byCat[q.cat] || [0, 0]; b[1]++; if (quiz.results[i]) b[0]++; });
   const wrongQs = quiz.qs.filter((q, i) => !quiz.results[i]);
