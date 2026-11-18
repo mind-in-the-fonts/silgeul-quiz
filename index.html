@@ -131,6 +131,23 @@ textarea{min-height:100px;resize:vertical;line-height:1.6}
 }
 .resume{background:var(--card);border:1px solid var(--grid);border-radius:var(--r);padding:16px 18px;display:grid;gap:12px;margin-bottom:28px}
 .resume b{display:block;font-size:17px}.resume span{font-size:14px}.resume .bar{margin:10px 0 0}
+
+.gcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+@media (max-width:560px){.gcards{grid-template-columns:1fr}}
+.gcard{background:var(--card);border:2px solid var(--line);border-radius:var(--r);overflow:hidden;transition:border-color .12s}
+.gcard[data-st="all"],.gcard[data-st="some"]{border-color:var(--grid)}
+.gtoggle{display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:none;border-radius:0;background:transparent;padding:14px 16px}
+.gtoggle:hover{background:transparent}
+.gtoggle .box{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:800}
+.gcard[data-st="all"] .box{background:var(--grid);border-color:var(--grid)}.gcard[data-st="all"] .box::after{content:"✓"}
+.gcard[data-st="some"] .box{background:var(--grid);border-color:var(--grid)}.gcard[data-st="some"] .box::after{content:"–"}
+.gname{font-weight:700;font-size:16px}.gname small{display:block;font-weight:500;font-size:13px;color:var(--muted)}
+details{border-top:1px solid var(--line);padding:0 16px}
+summary{cursor:pointer;padding:10px 0;font-size:13.5px;font-weight:600;color:var(--muted);list-style:none}
+summary::-webkit-details-marker{display:none}summary::after{content:" ▾"}details[open] summary::after{content:" ▴"}
+details .chips{padding-bottom:14px}
+.gobar{position:sticky;bottom:0;margin:28px calc(-1*max(16px,env(safe-area-inset-left,0px))) -80px;padding:12px max(16px,env(safe-area-inset-left,0px)) calc(12px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.gobar .muted{font-size:14px;font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -351,15 +368,21 @@ function route() {
 window.addEventListener('hashchange', () => { cur = (location.hash || '#home').slice(1); route(); });
 
 function totals() { let r = 0, t = 0; for (const c in tally) { r += tally[c][0]; t += tally[c][1]; } return [r, t]; }
+const openGrp = new Set();
 function renderHome() {
   const [r, t] = totals(), nw = Object.keys(wrongs).length;
   const groups = GROUP_ORDER.map(g => {
     const cs = Object.keys(CATS).filter(c => CATS[c].group === g); if (!cs.length) return '';
-    const allOn = cs.every(c => state.cats.has(c));
-    return `<div class="grp"><b>${g}</b><div class="chips">
-      <button class="chip ghost" data-grp="${g}" aria-pressed="${allOn}">전체</button>
-      ${cs.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${!allOn && state.cats.has(c)}">${esc(c)}<span class="n">${CATS[c].n}</span></button>`).join('')}
-    </div></div>`;
+    const on = cs.filter(c => state.cats.has(c)), allOn = on.length === cs.length;
+    const n = cs.reduce((a, c) => a + CATS[c].n, 0);
+    let gr = 0, gt = 0; cs.forEach(c => { if (tally[c]) { gr += tally[c][0]; gt += tally[c][1]; } });
+    const st = allOn ? 'all' : on.length ? 'some' : 'none';
+    return `<div class="gcard" data-st="${st}">
+      <button class="gtoggle" data-grp="${g}" aria-pressed="${allOn}"><span class="box"></span>
+        <span class="gname">${g}<small>${n}문제${gt ? ` · 정답률 ${Math.round(gr / gt * 100)}%` : ''}</small></span></button>
+      ${cs.length > 1 ? `<details ${openGrp.has(g) ? 'open' : ''} data-g="${g}"><summary>${allOn ? '세부 갈래' : `세부 갈래 ${on.length}/${cs.length}개 선택`}</summary><div class="chips">
+      ${cs.map(c => `<button class="chip" data-cat="${esc(c)}" aria-pressed="${state.cats.has(c)}">${esc(c)}<span class="n">${CATS[c].n}</span></button>`).join('')}
+      </div></details>` : ''}</div>`;
   }).join('');
   const pool = [...state.cats].reduce((s, c) => s + (CATS[c] ? CATS[c].n : 0), 0);
   const sv = savedQuiz();
@@ -377,7 +400,7 @@ function renderHome() {
     </div>
   </section>
   <section>
-    <h3>범위</h3>${groups}
+    <h3>범위</h3><div class="gcards">${groups}</div>
   </section>
   <section>
     <h3>문제 방식</h3>
@@ -392,15 +415,14 @@ function renderHome() {
       </div>
     </div>
   </section>
-  <section class="row">
-    <button class="primary" id="go" ${pool ? '' : 'disabled'}>문제 풀기 시작</button>
-    <span class="muted" style="font-size:13.5px">고른 범위의 표 ${pool}줄</span>
-  </section>`;
+  <div class="gobar"><span class="muted">${pool ? `${Math.min(pool, state.count)}문제를 풀어요` : '범위를 골라 주세요'}</span>
+    <button class="primary" id="go" ${pool ? '' : 'disabled'}>문제 풀기 시작</button></div>`;
   view.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat, cs = Object.keys(CATS).filter(x => CATS[x].group === CATS[c].group);
-    if (cs.every(x => state.cats.has(x))) cs.forEach(x => x === c || state.cats.delete(x)); else state.cats.has(c) ? state.cats.delete(c) : state.cats.add(c); saveState(); renderHome(); });
+    state.cats.has(c) ? state.cats.delete(c) : state.cats.add(c); saveState(); renderHome(); });
+  view.querySelectorAll('details[data-g]').forEach(d => d.ontoggle = () => d.open ? openGrp.add(d.dataset.g) : openGrp.delete(d.dataset.g));
   view.querySelectorAll('[data-grp]').forEach(b => b.onclick = () => {
     const cs = Object.keys(CATS).filter(c => CATS[c].group === b.dataset.grp), on = cs.every(c => state.cats.has(c));
-    cs.forEach(c => on ? state.cats.delete(c) : state.cats.add(c)); saveState(); renderHome(); });
+    cs.forEach(c => on ? state.cats.delete(c) : state.cats.add(c)); openGrp.delete(b.dataset.grp); saveState(); renderHome(); });
   view.querySelectorAll('#style button').forEach(b => b.onclick = () => { state.style = b.dataset.v; saveState(); renderHome(); });
   view.querySelectorAll('#count button').forEach(b => b.onclick = () => { state.count = +b.dataset.v; saveState(); renderHome(); });
   if (sv) { $('#resume').onclick = resumeQuiz; $('#drop').onclick = () => { const b = $('#drop'); if (b.dataset.sure) { store.set('quiz', null); renderHome(); } else { b.dataset.sure = 1; b.textContent = '한 번 더 누르면 지워요'; } }; }
